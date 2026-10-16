@@ -1,0 +1,260 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Vascu360</title>
+<meta name="theme-color" content="#0f2a6b">
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#eef2f8;color:#1b2440;padding-bottom:70px}
+header{background:#0f2a6b;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
+.card{background:#fff;border-radius:14px;margin:12px;padding:14px;box-shadow:0 2px 8px #0001}
+.score{background:linear-gradient(135deg,#0f2a6b,#1e4fd1);color:#fff;text-align:center}
+.big{font-size:56px;font-weight:700}.bar{height:10px;border-radius:5px;background:linear-gradient(90deg,#2ecc71,#f1c40f,#e67e22,#e74c3c);position:relative;margin:10px 0}
+.mk{position:absolute;top:-4px;width:4px;height:18px;background:#fff;border-radius:2px;box-shadow:0 0 3px #000}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.m{background:#f4f6fb;border-radius:10px;padding:8px;text-align:center;font-size:13px}.m b{font-size:24px;display:block}
+canvas{width:100%;height:160px;display:block}
+button{background:#1e4fd1;color:#fff;border:0;border-radius:10px;padding:11px;font-size:15px;width:100%;margin-top:8px}button:disabled{opacity:.5}
+.tag{padding:2px 8px;border-radius:8px;font-size:13px;white-space:nowrap}.H{background:#fde2e2;color:#c0392b}.M{background:#fff1d6;color:#b9770e}.L{background:#dff5e6;color:#1e8449}
+nav{position:fixed;bottom:0;left:0;right:0;background:#fff;display:flex;border-top:1px solid #ddd}
+nav a{flex:1;text-align:center;padding:6px 0;font-size:11px;color:#667;cursor:pointer}nav a.on{color:#1e4fd1;font-weight:700}
+.page{display:none}.page.on{display:block}
+label{display:flex;justify-content:space-between;align-items:center;margin:8px 0;gap:8px}
+input,select{width:45%;padding:7px;border:1px solid #ccd;border-radius:8px;font-size:14px}
+.row{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid #eee}
+#alarm{display:none;position:fixed;top:0;left:0;right:0;background:#e67e22;color:#fff;padding:14px;text-align:center;z-index:9}
+@media print{nav,header,button{display:none!important}.page{display:none!important}#p-report{display:block!important}}
+</style></head><body>
+<div id="alarm"></div>
+<header><b>Vascu360</b><span><small id="conn">Not connected</small>
+ <button onclick="connect()" style="width:auto;margin:0 0 0 6px;padding:6px 10px;font-size:13px">🔵 Connect</button></span></header>
+
+<section class="page on" id="p-home">
+ <div class="card score"><div>Vascular Risk Score</div>
+  <div class="big"><span id="sc">--</span><small style="font-size:20px">/100</small></div>
+  <div>Risk level: <b id="lv">-</b></div>
+  <div class="bar"><div class="mk" id="mk" style="left:0"></div></div>
+  <small id="sct">Take your first measurement to see your score</small></div>
+ <div class="card"><div class="row" style="border:0"><b>Pulse Waveform (PPG)</b><span id="fg" class="tag M">No finger</span></div>
+  <canvas id="cw"></canvas>
+  <div class="grid">
+   <div class="m">Heart Rate<b id="vhr">--</b>bpm</div>
+   <div class="m">Fingertip Temp<b id="vt">--</b>°C</div>
+   <div class="m">Perfusion Index<b id="vpi">--</b>%</div>
+   <div class="m">HRV (RMSSD)<b id="vrm">--</b>ms</div>
+  </div>
+  <small>Crest time: <span id="vct">--</span> ms</small>
+  <button id="bm" onclick="startMeasure()">🔍 Start Screening (30 s)</button>
+  <div id="prog" style="margin-top:6px;font-size:14px"></div></div>
+</section>
+
+<section class="page" id="p-track"><div class="card"><b>📈 Trends</b>
+ <div style="display:flex;gap:6px;margin:8px 0">
+  <select id="tm" onchange="drawTrack()" style="width:50%"><option value="score">Risk Score</option><option value="hr">Heart Rate</option><option value="pi">Perfusion Index</option><option value="t">Fingertip Temp</option><option value="rm">HRV</option></select>
+  <select id="tr" onchange="drawTrack()" style="width:50%"><option value="1">Daily</option><option value="7" selected>Weekly</option><option value="30">Monthly</option></select></div>
+ <canvas id="ct"></canvas></div>
+ <div class="card"><b>Recent Measurements</b><div id="hist"></div></div></section>
+
+<section class="page" id="p-risk"><div class="card"><b>⚠️ Risk Factors</b><div id="rf"></div>
+ <small>Factors that may increase your risk, sorted from highest to lowest</small></div></section>
+
+<section class="page" id="p-rec"><div class="card"><b>❤️ Today's Action Plan</b> <small id="plp"></small><div id="pl"></div></div></section>
+
+<section class="page" id="p-prof">
+ <div class="card"><b>🧬 Health Profile</b><div id="pf"></div><button onclick="saveProf()">Save Profile</button></div>
+ <div class="card"><b>🔔 Measurement Reminders</b>
+  <label>Times (comma-separated)<input id="rt" placeholder="08:00, 20:00"></label>
+  <button onclick="saveRem()">Save Reminder Times</button>
+  <button style="background:#667" onclick="window.Notification&&Notification.requestPermission()">Allow Notifications</button>
+  <small>Keep this page open to receive reminders</small></div>
+ <div class="card"><button style="background:#c0392b" onclick="if(confirm('Delete all measurement history?')){hist=[];SV('hist',hist);location.reload()}">Clear Measurement History</button></div>
+</section>
+
+<section class="page" id="p-report"><div class="card"><b>📋 Vascular Health Report</b><div id="rep"></div>
+ <button onclick="print()">Print / Save as PDF</button></div></section>
+
+<nav><a data-p="home" class="on" onclick="go('home')">🏠<br>Home</a><a data-p="track" onclick="go('track')">📈<br>Track</a>
+<a data-p="risk" onclick="go('risk')">⚠️<br>Risks</a><a data-p="rec" onclick="go('rec')">❤️<br>Recovery</a>
+<a data-p="prof" onclick="go('prof')">🧬<br>Profile</a><a data-p="report" onclick="go('report')">📋<br>Report</a></nav>
+
+<script>
+const LOC='en-GB';
+const $=i=>document.getElementById(i);
+const LS=(k,d)=>JSON.parse(localStorage.getItem(k)||JSON.stringify(d));
+const SV=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
+let prof=LS('prof',{age:45,sex:'M',sbp:120,dbp:80,ldl:110,hdl:50,fbs:95,ex:90,sleep:7,smoke:0,fam:0});
+let hist=LS('hist',[]),rem=LS('rem',{times:['08:00','20:00']});
+let wave=[],live={},sess=null,fired={};
+const levelOf=s=>s>=45?'High':s>=20?'Moderate':'Low';
+
+function go(p){document.querySelectorAll('.page').forEach(e=>e.classList.toggle('on',e.id=='p-'+p));
+ document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.dataset.p==p));
+ if(p=='track')drawTrack();if(p=='risk')renderRisk();if(p=='rec')renderPlan();if(p=='report')renderReport();}
+
+/* ---------- Bluetooth (BLE) ---------- */
+const SVC='a5c30001-7b1e-4f6a-9d2e-3c1b5e8f0a01',
+      WAVE='a5c30002-7b1e-4f6a-9d2e-3c1b5e8f0a01',
+      VIT='a5c30003-7b1e-4f6a-9d2e-3c1b5e8f0a01';
+let dev=null,retry=0;
+
+async function connect(){
+ if(!navigator.bluetooth){alert('This browser does not support Web Bluetooth.\nAndroid/PC: use Chrome or Edge\niPhone: use the Bluefy app');return}
+ try{
+  if(dev&&dev.gatt.connected)dev.gatt.disconnect();
+  dev=await navigator.bluetooth.requestDevice({filters:[{name:'Vascu360'},{services:[SVC]}],optionalServices:[SVC]});
+  dev.addEventListener('gattserverdisconnected',onDisc);
+  retry=0;await link();
+ }catch(e){$('conn').textContent='Cancelled / connection failed'}
+}
+async function link(){
+ $('conn').textContent='Connecting…';
+ const g=await dev.gatt.connect(),s=await g.getPrimaryService(SVC);
+ const cw=await s.getCharacteristic(WAVE),cv=await s.getCharacteristic(VIT);
+ cw.removeEventListener('characteristicvaluechanged',onWave);cw.addEventListener('characteristicvaluechanged',onWave);
+ cv.removeEventListener('characteristicvaluechanged',onVit);cv.addEventListener('characteristicvaluechanged',onVit);
+ await cw.startNotifications();await cv.startNotifications();
+ retry=0;$('conn').textContent='● Connected';
+}
+function onDisc(){
+ live={};updUI({f:0});
+ if(sess){sess=null;$('bm').disabled=false;$('prog').textContent='Cancelled: Bluetooth disconnected during measurement'}
+ if(++retry>5){$('conn').textContent='○ Disconnected (tap Connect)';return}
+ $('conn').textContent='○ Connection lost, retrying… ('+retry+')';
+ setTimeout(()=>link().catch(()=>{}),2000);
+}
+function onWave(e){const v=e.target.value,n=v.getUint8(1);
+ for(let i=0;i<n;i++){wave.push(v.getInt16(2+2*i,true));if(wave.length>300)wave.shift()}}
+function onVit(e){
+ const v=e.target.value,fl=v.getUint8(0),g=o=>v.getInt16(o,true);
+ const d={f:fl&1,b:(fl>>1)&1,hr:g(1)/10,pi:g(3)/100,rm:g(5)/10,ct:g(7),t:g(9)/100};
+ live=d;updUI(d);if(sess)collect(d);
+}
+function updUI(d){
+ $('fg').textContent=d.f?'Finger detected':'No finger';$('fg').className='tag '+(d.f?'L':'M');
+ $('vhr').textContent=d.f&&d.hr?d.hr.toFixed(0):'--';$('vt').textContent=d.t?d.t.toFixed(1):'--';
+ $('vpi').textContent=d.f&&d.pi?d.pi.toFixed(2):'--';$('vrm').textContent=d.f&&d.rm?d.rm.toFixed(0):'--';
+ $('vct').textContent=d.f&&d.ct?d.ct:'--';
+}
+
+/* ---------- Pulse waveform ---------- */
+function fit(c){const r=c.getBoundingClientRect(),p=devicePixelRatio||1,W=Math.round(r.width*p),H=Math.round(r.height*p);
+ if(c.width!=W||c.height!=H){c.width=W;c.height=H}const x=c.getContext('2d');x.setTransform(p,0,0,p,0,0);return[x,r.width,r.height]}
+
+function drawWave(){const[x,w,h]=fit($('cw'));x.clearRect(0,0,w,h);
+ if(wave.length>2){let mn=Math.min(...wave),mx=Math.max(...wave);if(mx-mn<1){mx+=1;mn-=1}
+  x.strokeStyle='#e74c3c';x.lineWidth=2;x.beginPath();
+  wave.forEach((v,i)=>{const px=i*w/299,py=h-6-(v-mn)/(mx-mn)*(h-12);i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke();}
+ requestAnimationFrame(drawWave);}
+
+/* ---------- SCREEN ---------- */
+function startMeasure(){if(!live.f){alert('Please connect via Bluetooth and place your finger on the sensor first.');return}
+ sess={t0:Date.now(),hr:[],pi:[],t:[],rm:[],ct:[],lost:0};$('bm').disabled=true;}
+function collect(d){const el=(Date.now()-sess.t0)/1000;
+ if(!d.f){if(++sess.lost>8){sess=null;$('bm').disabled=false;$('prog').textContent='Cancelled: finger removed from sensor'}return}
+ sess.lost=0;
+ if(el>5){if(d.hr>35&&d.hr<200)sess.hr.push(d.hr);if(d.pi>0)sess.pi.push(d.pi);if(d.t>0)sess.t.push(d.t);
+  if(d.rm>0)sess.rm.push(d.rm);if(d.ct>0)sess.ct.push(d.ct);}
+ $('prog').textContent='Measuring… '+Math.min(30,el).toFixed(0)+'/30 s — stay still, do not press hard';
+ if(el>=30)finish();}
+const med=a=>{if(!a.length)return 0;const s=[...a].sort((p,q)=>p-q);return s[Math.floor(s.length/2)]};
+function finish(){const m={ts:Date.now(),hr:med(sess.hr),pi:med(sess.pi),t:med(sess.t),rm:med(sess.rm),ct:med(sess.ct)};
+ sess=null;$('bm').disabled=false;
+ if(!m.hr){$('prog').textContent='Signal too weak. Try again (rest your finger lightly and keep still).';return}
+ const r=calcRisk(m);m.score=r.score;m.level=r.level;hist.push(m);SV('hist',hist);
+ $('prog').textContent='✅ Result saved';showScore();}
+function showScore(){const m=hist[hist.length-1];if(!m)return;
+ $('sc').textContent=m.score;$('lv').textContent=levelOf(m.score);$('mk').style.left=Math.min(98,m.score)+'%';
+ $('sct').textContent='Updated '+new Date(m.ts).toLocaleString(LOC);}
+
+/* ---------- Risk Score ---------- */
+function band(v,c,p){for(let i=0;i<c.length;i++)if(v<c[i])return p[i];return p[p.length-1]}
+function calcRisk(m){const p=prof,F=[],add=(name,val,pt,max)=>F.push({name,val,pt,max});
+ add('Age',p.age+' years',band(p.age,[40,50,60,70],[0,8,14,20,25]),25);
+ add('Blood pressure',p.sbp+'/'+p.dbp+' mmHg',Math.max(band(p.sbp,[120,130,140,160],[0,4,8,12,16]),band(p.dbp,[80,90,100],[0,8,12,16])),16);
+ add('LDL cholesterol',p.ldl+' mg/dL',band(p.ldl,[100,130,160,190],[0,3,6,9,12]),12);
+ add('HDL cholesterol',p.hdl+' mg/dL',band(p.hdl,[40,60],[6,3,0]),6);
+ add('Fasting blood sugar (FBS)',p.fbs+' mg/dL',band(p.fbs,[100,126],[0,5,10]),10);
+ add('Smoking',p.smoke?'Smoker':'Non-smoker',p.smoke?8:0,8);
+ add('Physical activity',p.ex+' min/week',band(p.ex,[75,150],[6,3,0]),6);
+ add('Family history',p.fam?'Yes':'No',p.fam?5:0,5);
+ add('Sleep',p.sleep+' hrs/night',p.sleep<6?3:0,3);
+ if(m){add('Resting heart rate',m.hr.toFixed(0)+' bpm',band(m.hr,[71,81,91],[0,2,4,6]),6);
+  if(m.rm)add('HRV (RMSSD)',m.rm.toFixed(0)+' ms',band(m.rm,[20,40],[4,2,0]),4);
+  if(m.pi)add('Fingertip perfusion (PI)',m.pi.toFixed(2)+' %',band(m.pi,[0.5,1],[4,2,0]),4);
+  if(m.t)add('Fingertip temperature',m.t.toFixed(1)+' °C',band(m.t,[27,30],[4,2,0]),4);}
+ const tot=F.reduce((s,f)=>s+f.pt,0),mx=F.reduce((s,f)=>s+f.max,0),score=Math.round(tot/mx*100);
+ F.forEach(f=>f.lvl=f.pt==0?'L':(f.pt/f.max>=0.6?'H':'M'));
+ return{score,level:levelOf(score),F};}
+
+/* ---------- Risk Factors ---------- */
+function renderRisk(){const r=calcRisk(hist[hist.length-1]);
+ $('rf').innerHTML=r.F.filter(f=>f.pt>0).sort((a,b)=>b.pt/b.max-a.pt/a.max)
+  .map(f=>`<div class="row"><span>${f.name}<br><small>${f.val}</small></span><span class="tag ${f.lvl}">${f.lvl=='H'?'High':'Moderate'}</span></div>`).join('')||'<p>No major risk factors found 👍</p>';}
+
+/* ---------- RECOVERY ---------- */
+const TIPS={'Blood pressure':'Cut down on salt: keep sodium under 2,000 mg/day and check your BP morning and evening',
+ 'LDL cholesterol':'Reduce fried foods and saturated fat; eat more vegetables, nuts and whole grains',
+ 'HDL cholesterol':'Add healthy fats from fish and nuts, and do aerobic exercise',
+ 'Fasting blood sugar (FBS)':'Avoid sugary drinks and control carbohydrate portions at each meal',
+ 'Smoking':'Make a plan to quit smoking (Thailand Quitline 1600)',
+ 'Physical activity':'Brisk walk or cycle for 30 minutes (goal: 150 min/week)',
+ 'Sleep':'Sleep 7–8 hours; avoid screens 1 hour before bed',
+ 'Resting heart rate':'Cut back on caffeine and practise slow breathing before bed',
+ 'HRV (RMSSD)':'Slow breathing at 6 breaths/min for 5 minutes, twice a day',
+ 'Fingertip perfusion (PI)':'Get up and stretch every hour, and drink enough water',
+ 'Fingertip temperature':'Get up and stretch every hour, and drink enough water',
+ 'Age':'Get an annual health check-up','Family history':'Get an annual health check-up'};
+function plan(F){const o=[];F.filter(f=>f.pt>0).forEach(f=>{const t=TIPS[f.name];if(t&&!o.includes(t))o.push(t)});
+ if(!o.includes(TIPS['Physical activity']))o.push('Brisk walk or stay active for 30 minutes');
+ o.push('Re-measure 1–2 times a day at the same time, after sitting quietly for 5 minutes');return o;}
+const dayKey=()=>{const d=new Date();return 'done_'+d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate()};
+function renderPlan(){const it=plan(calcRisk(hist[hist.length-1]).F),dn=LS(dayKey(),{});
+ $('pl').innerHTML=it.map((t,i)=>`<label style="justify-content:flex-start"><input type="checkbox" style="width:auto" ${dn[i]?'checked':''} onchange="chk(${i},this.checked)">${t}</label>`).join('');
+ $('plp').textContent=`(${it.filter((_,i)=>dn[i]).length}/${it.length} done)`;}
+function chk(i,c){const k=dayKey(),d=LS(k,{});d[i]=c;SV(k,d);renderPlan();}
+
+/* ---------- TRACK ---------- */
+function drawTrack(){const key=$('tm').value,days=+$('tr').value,d=hist.filter(h=>h.ts>=Date.now()-days*864e5&&h[key]>0);
+ const[x,w,h]=fit($('ct'));x.clearRect(0,0,w,h);x.font='11px sans-serif';
+ if(!d.length){x.fillStyle='#889';x.fillText('No data for this period',10,20)}else{
+  const vs=d.map(e=>e[key]);let mn=Math.min(...vs),mx=Math.max(...vs);if(mx-mn<1){mn-=1;mx+=1}
+  const L=34,B=20,px=i=>L+(d.length==1?(w-L)/2:(w-L-10)*i/(d.length-1)),py=v=>10+(h-B-10)*(1-(v-mn)/(mx-mn));
+  x.strokeStyle='#eee';x.fillStyle='#889';
+  for(let i=0;i<=4;i++){const y=10+(h-B-10)*i/4;x.beginPath();x.moveTo(L,y);x.lineTo(w,y);x.stroke();x.fillText((mx-(mx-mn)*i/4).toFixed(key=='pi'?1:0),0,y+4)}
+  x.strokeStyle='#1e4fd1';x.lineWidth=2;x.beginPath();d.forEach((e,i)=>i?x.lineTo(px(i),py(e[key])):x.moveTo(px(i),py(e[key])));x.stroke();
+  x.fillStyle='#1e4fd1';d.forEach((e,i)=>{x.beginPath();x.arc(px(i),py(e[key]),3,0,7);x.fill()});
+  x.fillStyle='#889';[...new Set([0,d.length-1])].forEach(i=>{const t=new Date(d[i].ts);
+   x.fillText(days==1?t.toLocaleTimeString(LOC,{hour:'2-digit',minute:'2-digit'}):t.getDate()+'/'+(t.getMonth()+1),Math.min(px(i)-10,w-40),h-4)});}
+ $('hist').innerHTML=hist.slice(-10).reverse().map(e=>`<div class="row"><span>${new Date(e.ts).toLocaleString(LOC)}</span><span>${e.score} · ${e.hr.toFixed(0)} bpm</span></div>`).join('')||'No data yet';}
+
+/* ---------- Health Profile ---------- */
+const PF=[['age','Age (years)'],['sex','Sex',[['M','Male'],['F','Female']]],['sbp','Systolic BP (mmHg)'],['dbp','Diastolic BP (mmHg)'],
+ ['ldl','LDL (mg/dL)'],['hdl','HDL (mg/dL)'],['fbs','Fasting blood sugar (mg/dL)'],['ex','Exercise (min/week)'],['sleep','Sleep (hrs/night)'],
+ ['smoke','Smoking',[[0,'No'],[1,'Yes']]],['fam','Family history of heart/vascular disease',[[0,'No'],[1,'Yes']]]];
+function buildProf(){$('pf').innerHTML=PF.map(([k,l,o])=>`<label>${l}${o?`<select id="p_${k}">${o.map(([v,n])=>`<option value="${v}">${n}</option>`).join('')}</select>`:`<input type="number" step="any" id="p_${k}">`}</label>`).join('');
+ PF.forEach(([k])=>$('p_'+k).value=prof[k]);$('rt').value=rem.times.join(', ');}
+function saveProf(){PF.forEach(([k])=>{const v=$('p_'+k).value;prof[k]=k=='sex'?v:+v});SV('prof',prof);alert('Profile saved');}
+
+/* ---------- Reminder ---------- */
+function saveRem(){rem.times=$('rt').value.split(',').map(s=>s.trim()).filter(s=>/^\d{2}:\d{2}$/.test(s));SV('rem',rem);alert('Reminders set: '+rem.times.join(', '));}
+function tick(){const n=new Date(),hm=n.toTimeString().slice(0,5),k=n.toDateString()+hm;
+ if(rem.times.includes(hm)&&!fired[k]){fired[k]=1;alarm('🔔 Time to check your vascular health ('+hm+')')}}
+function alarm(msg){const a=$('alarm');a.innerHTML=msg+' &nbsp;<u onclick="this.parentNode.style.display=\'none\'">Close</u>';a.style.display='block';
+ try{const c=new AudioContext(),o=c.createOscillator();o.frequency.value=880;o.connect(c.destination);o.start();o.stop(c.currentTime+.6)}catch(e){}
+ navigator.vibrate&&navigator.vibrate([300,100,300]);
+ if(window.Notification&&Notification.permission=='granted')new Notification('Vascu360',{body:msg});}
+
+/* ---------- Report ---------- */
+function renderReport(){const now=Date.now(),d30=hist.filter(h=>h.ts>now-30*864e5),last=hist[hist.length-1];
+ if(!last){$('rep').innerHTML='<p>No measurements yet</p>';return}
+ const avg=k=>{const a=d30.map(e=>e[k]).filter(v=>v>0);return a.length?a.reduce((s,v)=>s+v,0)/a.length:0};
+ const r=calcRisk(last);let tr='Not enough data';
+ if(d30.length>1){const dd=last.score-d30[0].score;tr=dd<0?`Improved (${dd} pts)`:dd>0?`Worsened (+${dd} pts)`:'Stable'}
+ const d7=new Set(hist.filter(h=>h.ts>now-7*864e5).map(h=>new Date(h.ts).toDateString())).size;
+ const row=(a,b)=>`<div class="row"><span>${a}</span><b>${b}</b></div>`;
+ $('rep').innerHTML=row('Report date',new Date().toLocaleString(LOC))+row('Latest Risk Score',last.score+'/100 ('+levelOf(last.score)+')')+
+  row('30-day trend',tr)+row('Measurements (30 days)',d30.length)+row('Days measured (last 7 days)',d7+'/7')+
+  '<h4>30-Day Averages</h4>'+row('Heart rate',avg('hr').toFixed(0)+' bpm')+row('HRV (RMSSD)',avg('rm').toFixed(0)+' ms')+
+  row('Perfusion Index',avg('pi').toFixed(2)+' %')+row('Fingertip temperature',avg('t').toFixed(1)+' °C')+row('Crest time',avg('ct').toFixed(0)+' ms')+
+  '<h4>Risk Factors</h4>'+(r.F.filter(f=>f.pt>0).map(f=>row(f.name,f.val)).join('')||'<p>None</p>')+
+  '<h4>Recommendations</h4>'+plan(r.F).map(t=>'<div>• '+t+'</div>').join('')+
+  '<p><small>This result is for general health tracking only and is not a medical diagnosis.</small></p>';}
+
+buildProf();showScore();drawWave();setInterval(tick,15000);
+</script></body></html>
